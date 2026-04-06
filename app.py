@@ -10,22 +10,35 @@ app = Flask(__name__)
 def gerar():
     nome = request.args.get('name', 'Player')
     issuer = request.args.get('issuer', 'MeuJogo')
-    
+
     secret = pyotp.random_base32()
     totp = pyotp.TOTP(secret)
     uri = totp.provisioning_uri(name=nome, issuer_name=issuer)
-    
-    # Gera QR como base64
-    qr = qrcode.make(uri)
+
+    qr = qrcode.QRCode(border=1)
+    qr.add_data(uri)
+    qr.make(fit=True)
+
+    # Gera matriz de 0s e 1s
+    matriz = []
+    for row in qr.modules:
+        linha = []
+        for cell in row:
+            linha.append(1 if cell else 0)
+        matriz.append(linha)
+
+    # Gera QR como base64 tambem (opcional)
+    img = qr.make_image(fill_color="black", back_color="white")
     buffer = io.BytesIO()
-    qr.save(buffer, format="PNG")
+    img.save(buffer, format="PNG")
     buffer.seek(0)
     qr_base64 = base64.b64encode(buffer.read()).decode('utf-8')
-    
+
     return jsonify({
         "secret": secret,
         "uri": uri,
-        "qr_base64": qr_base64
+        "qr_base64": qr_base64,
+        "matriz": matriz
     })
 
 @app.route('/validar', methods=['POST'])
@@ -33,10 +46,10 @@ def validar():
     data = request.get_json()
     secret = data.get('secret')
     code = data.get('code')
-    
+
     if not secret or not code:
         return jsonify({"valid": False, "erro": "Dados ausentes"}), 400
-    
+
     try:
         totp = pyotp.TOTP(secret)
         valid = totp.verify(code, valid_window=1)
